@@ -21,6 +21,8 @@ MODEL_PATH = BASE_DIR / "models" / "random_forest_model.pkl"
 PREPROCESSOR_PATH = BASE_DIR / "models" / "preprocessor.pkl"
 DATA_PATH = BASE_DIR / "data" / "processed" / "engineered_delivery.csv"
 
+MAX_DELIVERY_DISTANCE_KM = 100
+
 
 # =====================================================
 # FASTAPI APP
@@ -29,12 +31,12 @@ DATA_PATH = BASE_DIR / "data" / "processed" / "engineered_delivery.csv"
 app = FastAPI(
     title="Delivery ETA Prediction API",
     description="Machine Learning API for delivery time prediction",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Restrict to Vercel URL before production
+    allow_origins=["*"],  # Restrict to your frontend URL before production
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,7 +89,9 @@ class PredictionRequest(BaseModel):
     def validate_non_empty(cls, value):
         if not value.strip():
             raise ValueError("Value cannot be empty")
-        return value.strip()
+
+        # Preserve original value, including trailing spaces.
+        return value
 
 
 # =====================================================
@@ -110,9 +114,46 @@ def calculate_distance(lat1, lon1, lat2, lon2):
         * np.sin(dlon / 2) ** 2
     )
 
-    c = 2 * np.arcsin(np.sqrt(a))
+    # Protect against floating-point rounding errors.
+    a = np.clip(a, 0, 1)
+
+    c = 2 * np.arctan2(
+        np.sqrt(a),
+        np.sqrt(1 - a)
+    )
 
     return 6371 * c
+
+
+# =====================================================
+# CATEGORY VALIDATION
+# =====================================================
+
+def validate_categories(data):
+
+    category_columns = {
+        "weather": "Weather",
+        "traffic": "Traffic",
+        "vehicle": "Vehicle",
+        "area": "Area",
+        "category": "Category"
+    }
+
+    for request_field, dataset_column in category_columns.items():
+
+        allowed_values = set(
+            reference_df[dataset_column]
+            .dropna()
+            .unique()
+        )
+
+        submitted_value = getattr(data, request_field)
+
+        if submitted_value not in allowed_values:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid {request_field} value. Please select a valid option."
+            )
 
 
 # =====================================================
@@ -136,7 +177,10 @@ def create_features(data):
     }
 
     if data.traffic not in traffic_map:
-        raise ValueError("Invalid traffic category")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid traffic category."
+        )
 
     traffic_score = traffic_map[data.traffic]
 
@@ -246,6 +290,17 @@ def predict_delivery(data: PredictionRequest):
 
     try:
 
+        # Reject future order dates
+        if data.order_date > date.today():
+            raise HTTPException(
+                status_code=400,
+                detail="Order date cannot be in the future."
+            )
+
+        # Validate categorical values against training data
+        validate_categories(data)
+
+        # Reject identical pickup and delivery coordinates
         if (
             data.store_latitude == data.drop_latitude
             and data.store_longitude == data.drop_longitude
@@ -255,12 +310,26 @@ def predict_delivery(data: PredictionRequest):
                 detail="Pickup and drop locations cannot be the same."
             )
 
+        # Generate features and calculate distance
         input_features, distance = create_features(data)
 
+        # Reject unrealistic delivery distances
+        if distance > MAX_DELIVERY_DISTANCE_KM:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Delivery distance is {distance:.2f} km. "
+                    f"Maximum allowed distance is "
+                    f"{MAX_DELIVERY_DISTANCE_KM} km."
+                )
+            )
+
+        # Transform input features
         transformed_features = preprocessor.transform(
             input_features
         )
 
+        # Generate prediction
         prediction = model.predict(
             transformed_features
         )[0]
