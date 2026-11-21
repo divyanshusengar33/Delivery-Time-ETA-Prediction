@@ -1,2 +1,73 @@
 
 @import "tailwindcss";
+
+/* --------------------------------
+   ETA PREDICTOR - DESIGN SYSTEM
+--------------------------------- */
+
+@theme {
+  --color-brand-green: #32816E;
+  --color-brand-green-dark: #286957;
+  --color-brand-green-light: #EAF3EF;
+
+  --color-brand-blue: #3563A9;
+  --color-brand-blue-light: #EDF2F9;
+
+  --color-page: #F4F6F8;
+  --color-surface: #FFFFFF;
+
+  --color-heading: #263445;
+  --color-body: #64748B;
+  --color-border: #E2E8F0;
+
+  --font-sans: "Inter", sans-serif;
+}
+
+/* Base styles */
+
+:root {
+  font-family: "Inter", sans-serif;
+  color: #263445;
+  background: #F4F6F8;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #F4F6F8;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+::selection {
+  background: #DCECE5;
+  color: #263445;
+}
+
